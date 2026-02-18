@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1004258250083",
+    "project_id": "coinplay-52f02",
+    "storage_bucket": "coinplay-52f02.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1004258250083:android:182ce557b819c111849756",
+        "android_client_info": {
+          "package_name": "com.example.coinplay"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1004258250083-o83404q1phsjmjkf35ho2bcpvkvp8soj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJ8hTyz9ZeHwgpXL66-gcSbP9zj63wA2w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1004258250083-o83404q1phsjmjkf35ho2bcpvkvp8soj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
