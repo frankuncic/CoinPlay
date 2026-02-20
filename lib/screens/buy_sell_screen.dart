@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BuySellScreen extends StatefulWidget {
   final String coinId;
@@ -23,14 +25,141 @@ class _BuySellScreenState extends State<BuySellScreen> {
   bool _isBuying = true;
   final _amountController = TextEditingController();
   double _cryptoAmount = 0.0;
+  double _usdAmount = 0.0;
+  double _availableBalance = 0.0;
+  bool _isLoading = false;
   final _euroFormat = NumberFormat('#,##0.00', 'hr_HR');
 
+  @override
+  void initState() {
+    super.initState();
+    _loadBalance();
+  }
+
+  Future<void> _loadBalance() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      setState(() {
+        _availableBalance = (doc.data()?['balance'] ?? 0.0).toDouble();
+      });
+    }
+  }
+
   void _calculateCrypto(String value) {
-    final usd =
+    _usdAmount =
         double.tryParse(value.replaceAll('.', '').replaceAll(',', '.')) ?? 0.0;
     setState(() {
-      _cryptoAmount = usd / widget.coinPrice;
+      _cryptoAmount = _usdAmount / widget.coinPrice;
     });
+  }
+
+  Future<void> _confirmTransaction() async {
+    if (_cryptoAmount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid amount'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_isBuying && _usdAmount > _availableBalance) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Insufficient balance! Available: \$${_euroFormat.format(_availableBalance)}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid);
+
+      // Save transaction
+      await userRef.collection('transactions').add({
+        'coinId': widget.coinId,
+        'coinName': widget.coinName,
+        'coinSymbol': widget.coinSymbol,
+        'type': _isBuying ? 'buy' : 'sell',
+        'usdAmount': _usdAmount,
+        'cryptoAmount': _cryptoAmount,
+        'priceAtTime': widget.coinPrice,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // Update balance
+      final newBalance = _isBuying
+          ? _availableBalance - _usdAmount
+          : _availableBalance + _usdAmount;
+
+      await userRef.update({'balance': newBalance});
+
+      // Update holdings
+      final holdingRef = userRef.collection('holdings').doc(widget.coinId);
+      final holdingDoc = await holdingRef.get();
+
+      if (holdingDoc.exists) {
+        final currentAmount = (holdingDoc.data()?['amount'] ?? 0.0).toDouble();
+        final newAmount = _isBuying
+            ? currentAmount + _cryptoAmount
+            : currentAmount - _cryptoAmount;
+
+        if (newAmount <= 0) {
+          await holdingRef.delete();
+        } else {
+          await holdingRef.update({
+            'amount': newAmount,
+            'coinName': widget.coinName,
+            'coinSymbol': widget.coinSymbol,
+            'lastPrice': widget.coinPrice,
+          });
+        }
+      } else if (_isBuying) {
+        await holdingRef.set({
+          'coinId': widget.coinId,
+          'coinName': widget.coinName,
+          'coinSymbol': widget.coinSymbol,
+          'amount': _cryptoAmount,
+          'avgBuyPrice': widget.coinPrice,
+          'lastPrice': widget.coinPrice,
+        });
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_isBuying ? 'Bought' : 'Sold'} ${_cryptoAmount.toStringAsFixed(6)} ${widget.coinSymbol.toUpperCase()}',
+            ),
+            backgroundColor: const Color(0xFF00E5A0),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -57,6 +186,32 @@ class _BuySellScreenState extends State<BuySellScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Balance indicator
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111520),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Available Balance',
+                    style: TextStyle(color: Color(0xFF5A6280)),
+                  ),
+                  Text(
+                    '\$${_euroFormat.format(_availableBalance)}',
+                    style: const TextStyle(
+                      color: Color(0xFF00E5A0),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Buy/Sell toggle
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF111520),
@@ -113,7 +268,8 @@ class _BuySellScreenState extends State<BuySellScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+            // Current price
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -173,16 +329,7 @@ class _BuySellScreenState extends State<BuySellScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${_isBuying ? 'Bought' : 'Sold'} ${_cryptoAmount.toStringAsFixed(6)} ${widget.coinSymbol.toUpperCase()}',
-                      ),
-                      backgroundColor: const Color(0xFF00E5A0),
-                    ),
-                  );
-                },
+                onPressed: _isLoading ? null : _confirmTransaction,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _isBuying
                       ? const Color(0xFF00E5A0)
@@ -192,14 +339,16 @@ class _BuySellScreenState extends State<BuySellScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(
-                  _isBuying ? 'Confirm Buy' : 'Confirm Sell',
-                  style: TextStyle(
-                    color: _isBuying ? Colors.black : Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: _isLoading
+                    ? const CircularProgressIndicator()
+                    : Text(
+                        _isBuying ? 'Confirm Buy' : 'Confirm Sell',
+                        style: TextStyle(
+                          color: _isBuying ? Colors.black : Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],

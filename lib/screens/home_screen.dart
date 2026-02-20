@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,31 +12,52 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String _username = '';
+  double _balance = 0.0;
+  bool _hasClaimed = false;
+  final _euroFormat = NumberFormat('#,##0.00', 'hr_HR');
 
   @override
   void initState() {
     super.initState();
-    _loadUsername();
+    _loadUserData();
   }
 
-  Future<void> _loadUsername() async {
+  Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .get();
-      if (doc.exists &&
-          doc.data()?['username'] != null &&
-          doc.data()!['username'].toString().isNotEmpty) {
+      if (doc.exists) {
         setState(() {
-          _username = doc.data()!['username'];
+          _username = doc.data()?['username'] ?? '';
+          _balance = (doc.data()?['balance'] ?? 0.0).toDouble();
+          _hasClaimed = doc.data()?['balance'] != null;
         });
+        if (_username.isEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showSetUsernameDialog();
+          });
+        }
       } else {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showSetUsernameDialog();
         });
       }
+    }
+  }
+
+  Future<void> _claimBalance() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'balance': 5000.0,
+      }, SetOptions(merge: true));
+      setState(() {
+        _balance = 5000.0;
+        _hasClaimed = true;
+      });
     }
   }
 
@@ -120,6 +142,59 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Claim banner for existing users without balance
+            if (!_hasClaimed)
+              GestureDetector(
+                onTap: _claimBalance,
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Row(
+                    children: [
+                      Text('🎁', style: TextStyle(fontSize: 24)),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Claim your free balance!',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              'Tap to claim \$5.000,00 virtual money to start trading',
+                              style: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.black,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Portfolio Balance Card
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -131,31 +206,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Total Portfolio Value',
+                  const Text(
+                    'Available Balance',
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
-                    '\$0.00',
-                    style: TextStyle(
+                    '\$${_euroFormat.format(_balance)}',
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 36,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    '0.00% today',
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Virtual trading balance',
                     style: TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
+
+            // Quick Actions
             const Text(
               'Quick Actions',
               style: TextStyle(
@@ -175,6 +252,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 24),
+
+            // Holdings
             const Text(
               'Your Holdings',
               style: TextStyle(

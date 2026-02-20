@@ -39,6 +39,7 @@ class _AuthScreenState extends State<AuthScreen> {
             .set({
               'username': _usernameController.text.trim(),
               'email': _emailController.text.trim(),
+              'balance': 5000.0,
               'createdAt': FieldValue.serverTimestamp(),
             });
       }
