@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'market_screen.dart';
 import 'sell_screen.dart';
+import 'swap_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -403,11 +404,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     _ActionButton(
                       icon: Icons.swap_horiz,
                       label: 'Swap',
-                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Swap coming soon!'),
-                          backgroundColor: Color(0xFF111520),
-                        ),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SwapScreen()),
                       ),
                     ),
                   ],
