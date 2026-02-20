@@ -108,6 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox();
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
       appBar: AppBar(
@@ -137,161 +140,245 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Claim banner for existing users without balance
-            if (!_hasClaimed)
-              GestureDetector(
-                onTap: _claimBalance,
-                child: Container(
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('holdings')
+            .snapshots(),
+        builder: (context, snapshot) {
+          final holdings = snapshot.data?.docs ?? [];
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Claim banner
+                if (!_hasClaimed)
+                  GestureDetector(
+                    onTap: _claimBalance,
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Row(
+                        children: [
+                          Text('🎁', style: TextStyle(fontSize: 24)),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Claim your free balance!',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  'Tap to claim \$5.000,00 virtual money',
+                                  style: TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            color: Colors.black,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Balance card
+                Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                      colors: [Color(0xFF00E5A0), Color(0xFF0099FF)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('🎁', style: TextStyle(fontSize: 24)),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Claim your free balance!',
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              'Tap to claim \$5.000,00 virtual money to start trading',
-                              style: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
+                      const Text(
+                        'Available Balance',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '\$${_euroFormat.format(_balance)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        color: Colors.black,
-                        size: 16,
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Virtual trading balance',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                     ],
                   ),
                 ),
-              ),
+                const SizedBox(height: 24),
 
-            // Portfolio Balance Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF00E5A0), Color(0xFF0099FF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                // Quick Actions
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Available Balance',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '\$${_euroFormat.format(_balance)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Virtual trading balance',
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Quick Actions
-            const Text(
-              'Quick Actions',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _ActionButton(icon: Icons.add, label: 'Buy'),
-                const SizedBox(width: 12),
-                _ActionButton(icon: Icons.remove, label: 'Sell'),
-                const SizedBox(width: 12),
-                _ActionButton(icon: Icons.swap_horiz, label: 'Swap'),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Holdings
-            const Text(
-              'Your Holdings',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF111520),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Center(
-                child: Column(
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    Icon(
-                      Icons.pie_chart_outline,
-                      color: Color(0xFF5A6280),
-                      size: 48,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'No holdings yet',
-                      style: TextStyle(color: Color(0xFF5A6280)),
-                    ),
-                    Text(
-                      'Buy your first crypto to get started',
-                      style: TextStyle(color: Color(0xFF5A6280), fontSize: 12),
-                    ),
+                    _ActionButton(icon: Icons.add, label: 'Buy'),
+                    const SizedBox(width: 12),
+                    _ActionButton(icon: Icons.remove, label: 'Sell'),
+                    const SizedBox(width: 12),
+                    _ActionButton(icon: Icons.swap_horiz, label: 'Swap'),
                   ],
                 ),
-              ),
+                const SizedBox(height: 24),
+
+                // Holdings
+                const Text(
+                  'Your Holdings',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (holdings.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111520),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.pie_chart_outline,
+                            color: Color(0xFF5A6280),
+                            size: 48,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'No holdings yet',
+                            style: TextStyle(color: Color(0xFF5A6280)),
+                          ),
+                          Text(
+                            'Buy your first crypto to get started',
+                            style: TextStyle(
+                              color: Color(0xFF5A6280),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ...holdings.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final amount = (data['amount'] ?? 0.0).toDouble();
+                    final lastPrice = (data['lastPrice'] ?? 0.0).toDouble();
+                    final value = amount * lastPrice;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111520),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A1F35),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                data['coinSymbol']
+                                    .toString()
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                                style: const TextStyle(
+                                  color: Color(0xFF00E5A0),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  data['coinName'] ?? '',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '${amount.toStringAsFixed(6)} ${data['coinSymbol'].toString().toUpperCase()}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF5A6280),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '\$${_euroFormat.format(value)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
