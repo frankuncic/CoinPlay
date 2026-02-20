@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
+import 'market_screen.dart';
 
 class MainNav extends StatefulWidget {
   const MainNav({super.key});
@@ -13,7 +14,7 @@ class _MainNavState extends State<MainNav> {
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const Scaffold(body: Center(child: Text('Market'))),
+    const MarketScreen(),
     const Scaffold(body: Center(child: Text('Portfolio'))),
     const Scaffold(body: Center(child: Text('Learn'))),
     const Scaffold(body: Center(child: Text('Settings'))),
