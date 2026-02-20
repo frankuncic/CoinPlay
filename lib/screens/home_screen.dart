@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'market_screen.dart';
+import 'sell_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -380,11 +382,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    _ActionButton(icon: Icons.add, label: 'Buy'),
+                    _ActionButton(
+                      icon: Icons.add,
+                      label: 'Buy',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MarketScreen()),
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    _ActionButton(icon: Icons.remove, label: 'Sell'),
+                    _ActionButton(
+                      icon: Icons.remove,
+                      label: 'Sell',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SellScreen()),
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    _ActionButton(icon: Icons.swap_horiz, label: 'Swap'),
+                    _ActionButton(
+                      icon: Icons.swap_horiz,
+                      label: 'Swap',
+                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Swap coming soon!'),
+                          backgroundColor: Color(0xFF111520),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -531,26 +556,31 @@ class _HomeScreenState extends State<HomeScreen> {
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  const _ActionButton({required this.icon, required this.label});
+  final VoidCallback? onTap;
+
+  const _ActionButton({required this.icon, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111520),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: const Color(0xFF00E5A0)),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111520),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: const Color(0xFF00E5A0)),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+              ),
+            ],
+          ),
         ),
       ),
     );

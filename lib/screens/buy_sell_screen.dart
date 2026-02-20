@@ -57,6 +57,70 @@ class _BuySellScreenState extends State<BuySellScreen> {
     });
   }
 
+  void _showConfirmation() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF111520),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: const Color(0xFF00E5A0).withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle,
+                color: Color(0xFF00E5A0),
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Transaction Confirmed!',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_isBuying ? 'Bought' : 'Sold'} ${_cryptoAmount.toStringAsFixed(6)} ${widget.coinSymbol.toUpperCase()}\nfor \$${_euroFormat.format(_usdAmount)}',
+              style: const TextStyle(color: Color(0xFF5A6280), fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00E5A0),
+              ),
+              onPressed: () {
+                Navigator.pop(context); // close dialog
+                Navigator.pop(context); // go back
+              },
+              child: const Text(
+                'Done',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirmTransaction() async {
     if (_cryptoAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,7 +154,6 @@ class _BuySellScreenState extends State<BuySellScreen> {
           .collection('users')
           .doc(user.uid);
 
-      // Save transaction
       await userRef.collection('transactions').add({
         'coinId': widget.coinId,
         'coinName': widget.coinName,
@@ -102,14 +165,11 @@ class _BuySellScreenState extends State<BuySellScreen> {
         'timestamp': FieldValue.serverTimestamp(),
       });
 
-      // Update balance
       final newBalance = _isBuying
           ? _availableBalance - _usdAmount
           : _availableBalance + _usdAmount;
-
       await userRef.update({'balance': newBalance});
 
-      // Update holdings
       final holdingRef = userRef.collection('holdings').doc(widget.coinId);
       final holdingDoc = await holdingRef.get();
 
@@ -140,17 +200,7 @@ class _BuySellScreenState extends State<BuySellScreen> {
         });
       }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${_isBuying ? 'Bought' : 'Sold'} ${_cryptoAmount.toStringAsFixed(6)} ${widget.coinSymbol.toUpperCase()}',
-            ),
-            backgroundColor: const Color(0xFF00E5A0),
-          ),
-        );
-        Navigator.pop(context);
-      }
+      if (mounted) _showConfirmation();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -186,7 +236,6 @@ class _BuySellScreenState extends State<BuySellScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Balance indicator
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -211,7 +260,6 @@ class _BuySellScreenState extends State<BuySellScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            // Buy/Sell toggle
             Container(
               decoration: BoxDecoration(
                 color: const Color(0xFF111520),
@@ -269,7 +317,6 @@ class _BuySellScreenState extends State<BuySellScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            // Current price
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
