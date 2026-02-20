@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,12 +17,38 @@ class _HomeScreenState extends State<HomeScreen> {
   String _username = '';
   double _balance = 0.0;
   bool _hasClaimed = false;
+  Map<String, double> _livePrices = {};
   final _euroFormat = NumberFormat('#,##0.00', 'hr_HR');
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _timer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => _refreshPrices(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshPrices() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('holdings')
+        .get();
+    final coinIds = snapshot.docs
+        .map((doc) => doc.data()['coinId'] as String)
+        .toList();
+    await _fetchLivePrices(coinIds);
   }
 
   Future<void> _loadUserData() async {
@@ -36,16 +65,36 @@ class _HomeScreenState extends State<HomeScreen> {
           _hasClaimed = doc.data()?['balance'] != null;
         });
         if (_username.isEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showSetUsernameDialog();
-          });
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _showSetUsernameDialog(),
+          );
         }
       } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showSetUsernameDialog();
-        });
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _showSetUsernameDialog(),
+        );
       }
     }
+  }
+
+  Future<void> _fetchLivePrices(List<String> coinIds) async {
+    if (coinIds.isEmpty) return;
+    try {
+      final ids = coinIds.join(',');
+      final response = await http.get(
+        Uri.parse(
+          'https://api.coingecko.com/api/v3/simple/price?ids=$ids&vs_currencies=usd',
+        ),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final prices = <String, double>{};
+        for (final id in coinIds) {
+          prices[id] = (data[id]?['usd'] ?? 0.0).toDouble();
+        }
+        setState(() => _livePrices = prices);
+      }
+    } catch (_) {}
   }
 
   Future<void> _claimBalance() async {
@@ -149,12 +198,38 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, snapshot) {
           final holdings = snapshot.data?.docs ?? [];
 
+          if (holdings.isNotEmpty && _livePrices.isEmpty) {
+            final coinIds = holdings
+                .map(
+                  (doc) =>
+                      (doc.data() as Map<String, dynamic>)['coinId'] as String,
+                )
+                .toList();
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _fetchLivePrices(coinIds),
+            );
+          }
+
+          double holdingsValue = 0;
+          for (var doc in holdings) {
+            final data = doc.data() as Map<String, dynamic>;
+            final amount = (data['amount'] ?? 0.0).toDouble();
+            final coinId = data['coinId'] as String;
+            final price =
+                _livePrices[coinId] ?? (data['lastPrice'] ?? 0.0).toDouble();
+            holdingsValue += amount * price;
+          }
+
+          final totalWallet = _balance + holdingsValue;
+          final pnl = totalWallet - 5000.0;
+          final pnlPercent = pnl / 5000.0 * 100;
+          final isPositive = pnl >= 0;
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Claim banner
                 if (!_hasClaimed)
                   GestureDetector(
                     onTap: _claimBalance,
@@ -165,8 +240,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -206,7 +279,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
 
-                // Balance card
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
@@ -222,12 +294,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Available Balance',
+                        'Total Wallet Value',
                         style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '\$${_euroFormat.format(_balance)}',
+                        '\$${_euroFormat.format(totalWallet)}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 36,
@@ -235,16 +307,68 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Virtual trading balance',
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      Row(
+                        children: [
+                          Icon(
+                            isPositive
+                                ? Icons.arrow_upward
+                                : Icons.arrow_downward,
+                            color: Colors.white70,
+                            size: 14,
+                          ),
+                          Text(
+                            '${isPositive ? '+' : ''}\$${_euroFormat.format(pnl)} (${pnlPercent.toStringAsFixed(2)}%)',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111520),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.account_balance_wallet,
+                            color: Color(0xFF00E5A0),
+                            size: 18,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Available Cash',
+                            style: TextStyle(color: Color(0xFF5A6280)),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '\$${_euroFormat.format(_balance)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 24),
 
-                // Quick Actions
                 const Text(
                   'Quick Actions',
                   style: TextStyle(
@@ -265,7 +389,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Holdings
                 const Text(
                   'Your Holdings',
                   style: TextStyle(
@@ -310,8 +433,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ...holdings.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final amount = (data['amount'] ?? 0.0).toDouble();
-                    final lastPrice = (data['lastPrice'] ?? 0.0).toDouble();
-                    final value = amount * lastPrice;
+                    final coinId = data['coinId'] as String;
+                    final livePrice =
+                        _livePrices[coinId] ??
+                        (data['lastPrice'] ?? 0.0).toDouble();
+                    final value = amount * livePrice;
+                    final avgBuyPrice = (data['avgBuyPrice'] ?? livePrice)
+                        .toDouble();
+                    final pnl = (livePrice - avgBuyPrice) * amount;
+                    final isPos = pnl >= 0;
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -364,12 +494,26 @@ class _HomeScreenState extends State<HomeScreen> {
                               ],
                             ),
                           ),
-                          Text(
-                            '\$${_euroFormat.format(value)}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '\$${_euroFormat.format(value)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                '${isPos ? '+' : ''}\$${_euroFormat.format(pnl)}',
+                                style: TextStyle(
+                                  color: isPos
+                                      ? const Color(0xFF00E5A0)
+                                      : Colors.red,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -387,7 +531,6 @@ class _HomeScreenState extends State<HomeScreen> {
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
-
   const _ActionButton({required this.icon, required this.label});
 
   @override

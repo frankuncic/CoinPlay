@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -15,19 +16,44 @@ class _MarketScreenState extends State<MarketScreen> {
   List<dynamic> _coins = [];
   bool _isLoading = true;
   String? _error;
+  String _selectedTimeframe = '24h';
   final _euroFormat = NumberFormat('#,##0.00', 'hr_HR');
+  final List<String> _timeframes = ['1h', '24h', '7d'];
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _fetchCoins();
+    _timer = Timer.periodic(const Duration(seconds: 60), (_) => _fetchCoins());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _priceChangeKey {
+    switch (_selectedTimeframe) {
+      case '1h':
+        return 'price_change_percentage_1h_in_currency';
+      case '7d':
+        return 'price_change_percentage_7d_in_currency';
+      default:
+        return 'price_change_percentage_24h';
+    }
   }
 
   Future<void> _fetchCoins() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final response = await http.get(
         Uri.parse(
-          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1',
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&price_change_percentage=1h,24h,7d',
         ),
       );
       if (response.statusCode == 200) {
@@ -63,103 +89,160 @@ class _MarketScreenState extends State<MarketScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: () {
-              setState(() => _isLoading = true);
-              _fetchCoins();
-            },
+            onPressed: _fetchCoins,
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00E5A0)),
-            )
-          : _error != null
-          ? Center(
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            )
-          : ListView.builder(
-              itemCount: _coins.length,
-              itemBuilder: (context, index) {
-                final coin = _coins[index];
-                final priceChange = coin['price_change_percentage_24h'] ?? 0.0;
-                final isPositive = priceChange >= 0;
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: _timeframes.map((tf) {
+                final isSelected = _selectedTimeframe == tf;
                 return GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => BuySellScreen(
-                          coinId: coin['id'],
-                          coinName: coin['name'],
-                          coinSymbol: coin['symbol'],
-                          coinPrice: (coin['current_price'] as num).toDouble(),
-                        ),
-                      ),
-                    );
-                  },
+                  onTap: () => setState(() => _selectedTimeframe = tf),
                   child: Container(
-                    margin: const EdgeInsets.symmetric(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 16,
-                      vertical: 6,
+                      vertical: 8,
                     ),
-                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF111520),
-                      borderRadius: BorderRadius.circular(12),
+                      color: isSelected
+                          ? const Color(0xFF00E5A0)
+                          : const Color(0xFF111520),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(
-                      children: [
-                        Image.network(coin['image'], width: 40, height: 40),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Text(
+                      tf.toUpperCase(),
+                      style: TextStyle(
+                        color: isSelected
+                            ? Colors.black
+                            : const Color(0xFF5A6280),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF00E5A0)),
+                  )
+                : _error != null
+                ? Center(
+                    child: Text(
+                      _error!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _coins.length,
+                    itemBuilder: (context, index) {
+                      final coin = _coins[index];
+                      final priceChange = (coin[_priceChangeKey] ?? 0.0)
+                          .toDouble();
+                      final isPositive = priceChange >= 0;
+                      return GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => BuySellScreen(
+                              coinId: coin['id'],
+                              coinName: coin['name'],
+                              coinSymbol: coin['symbol'],
+                              coinPrice: (coin['current_price'] as num)
+                                  .toDouble(),
+                            ),
+                          ),
+                        ),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF111520),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
                             children: [
-                              Text(
-                                coin['name'],
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                              Image.network(
+                                coin['image'],
+                                width: 40,
+                                height: 40,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      coin['name'],
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      coin['symbol'].toString().toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Color(0xFF5A6280),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              Text(
-                                coin['symbol'].toString().toUpperCase(),
-                                style: const TextStyle(
-                                  color: Color(0xFF5A6280),
-                                  fontSize: 12,
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    _euroFormat.format(coin['current_price']),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        isPositive
+                                            ? Icons.arrow_upward
+                                            : Icons.arrow_downward,
+                                        color: isPositive
+                                            ? const Color(0xFF00E5A0)
+                                            : Colors.red,
+                                        size: 12,
+                                      ),
+                                      Text(
+                                        '${priceChange.abs().toStringAsFixed(2)}%',
+                                        style: TextStyle(
+                                          color: isPositive
+                                              ? const Color(0xFF00E5A0)
+                                              : Colors.red,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              _euroFormat.format(coin['current_price']),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              '${isPositive ? '+' : ''}${priceChange.toStringAsFixed(2)}%',
-                              style: TextStyle(
-                                color: isPositive
-                                    ? const Color(0xFF00E5A0)
-                                    : Colors.red,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
+          ),
+        ],
+      ),
     );
   }
 }

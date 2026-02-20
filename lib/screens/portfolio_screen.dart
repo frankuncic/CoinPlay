@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -12,6 +15,57 @@ class PortfolioScreen extends StatefulWidget {
 
 class _PortfolioScreenState extends State<PortfolioScreen> {
   final _euroFormat = NumberFormat('#,##0.00', 'hr_HR');
+  Map<String, double> _livePrices = {};
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => _refreshPrices(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshPrices() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('holdings')
+        .get();
+    final coinIds = snapshot.docs
+        .map((doc) => doc.data()['coinId'] as String)
+        .toList();
+    await _fetchLivePrices(coinIds);
+  }
+
+  Future<void> _fetchLivePrices(List<String> coinIds) async {
+    if (coinIds.isEmpty) return;
+    try {
+      final ids = coinIds.join(',');
+      final response = await http.get(
+        Uri.parse(
+          'https://api.coingecko.com/api/v3/simple/price?ids=$ids&vs_currencies=usd',
+        ),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final prices = <String, double>{};
+        for (final id in coinIds) {
+          prices[id] = (data[id]?['usd'] ?? 0.0).toDouble();
+        }
+        setState(() => _livePrices = prices);
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +81,12 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           'Portfolio',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: _refreshPrices,
+          ),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -42,10 +102,27 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           }
 
           final holdings = snapshot.data?.docs ?? [];
+
+          if (holdings.isNotEmpty && _livePrices.isEmpty) {
+            final coinIds = holdings
+                .map(
+                  (doc) =>
+                      (doc.data() as Map<String, dynamic>)['coinId'] as String,
+                )
+                .toList();
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _fetchLivePrices(coinIds),
+            );
+          }
+
           double totalValue = 0;
-          for (var h in holdings) {
-            final data = h.data() as Map<String, dynamic>;
-            totalValue += (data['amount'] ?? 0.0) * (data['lastPrice'] ?? 0.0);
+          for (var doc in holdings) {
+            final data = doc.data() as Map<String, dynamic>;
+            final amount = (data['amount'] ?? 0.0).toDouble();
+            final coinId = data['coinId'] as String;
+            final price =
+                _livePrices[coinId] ?? (data['lastPrice'] ?? 0.0).toDouble();
+            totalValue += amount * price;
           }
 
           return SingleChildScrollView(
@@ -53,7 +130,6 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Total value card
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
@@ -86,6 +162,18 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                           color: Colors.white,
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _livePrices.isEmpty
+                            ? 'Loading live prices...'
+                            : 'Live prices ↻ 60s',
+                        style: TextStyle(
+                          color: _livePrices.isEmpty
+                              ? const Color(0xFF5A6280)
+                              : const Color(0xFF00E5A0),
+                          fontSize: 12,
                         ),
                       ),
                     ],
@@ -135,11 +223,14 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                   ...holdings.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final amount = (data['amount'] ?? 0.0).toDouble();
-                    final lastPrice = (data['lastPrice'] ?? 0.0).toDouble();
-                    final value = amount * lastPrice;
-                    final avgBuyPrice = (data['avgBuyPrice'] ?? lastPrice)
+                    final coinId = data['coinId'] as String;
+                    final livePrice =
+                        _livePrices[coinId] ??
+                        (data['lastPrice'] ?? 0.0).toDouble();
+                    final value = amount * livePrice;
+                    final avgBuyPrice = (data['avgBuyPrice'] ?? livePrice)
                         .toDouble();
-                    final pnl = (lastPrice - avgBuyPrice) * amount;
+                    final pnl = (livePrice - avgBuyPrice) * amount;
                     final isPositive = pnl >= 0;
 
                     return Container(
@@ -188,6 +279,13 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                                   style: const TextStyle(
                                     color: Color(0xFF5A6280),
                                     fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  'Avg buy: \$${_euroFormat.format(avgBuyPrice)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF5A6280),
+                                    fontSize: 11,
                                   ),
                                 ),
                               ],
