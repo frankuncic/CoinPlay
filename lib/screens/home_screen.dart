@@ -1,13 +1,91 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+  State<HomeScreen> createState() => _HomeScreenState();
+}
 
+class _HomeScreenState extends State<HomeScreen> {
+  String _username = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUsername();
+  }
+
+  Future<void> _loadUsername() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (doc.exists &&
+          doc.data()?['username'] != null &&
+          doc.data()!['username'].toString().isNotEmpty) {
+        setState(() {
+          _username = doc.data()!['username'];
+        });
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showSetUsernameDialog();
+        });
+      }
+    }
+  }
+
+  Future<void> _showSetUsernameDialog() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF111520),
+        title: const Text(
+          'Set your username',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Username',
+            labelStyle: TextStyle(color: Color(0xFF5A6280)),
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00E5A0),
+            ),
+            onPressed: () async {
+              if (controller.text.trim().isNotEmpty) {
+                final user = FirebaseAuth.instance.currentUser;
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user!.uid)
+                    .set({
+                      'username': controller.text.trim(),
+                      'email': user.email,
+                    }, SetOptions(merge: true));
+                setState(() => _username = controller.text.trim());
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Save', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
       appBar: AppBar(
@@ -21,7 +99,7 @@ class HomeScreen extends StatelessWidget {
               style: TextStyle(color: Color(0xFF5A6280), fontSize: 13),
             ),
             Text(
-              user?.email ?? 'Investor',
+              _username.isEmpty ? '...' : _username,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 16,

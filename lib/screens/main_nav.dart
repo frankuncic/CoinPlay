@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'market_screen.dart';
 import 'portfolio_screen.dart';
+import 'settings_screen.dart';
 
 class MainNav extends StatefulWidget {
   const MainNav({super.key});
@@ -18,7 +19,7 @@ class _MainNavState extends State<MainNav> {
     const MarketScreen(),
     const PortfolioScreen(),
     const Scaffold(body: Center(child: Text('Learn'))),
-    const Scaffold(body: Center(child: Text('Settings'))),
+    const SettingsScreen(),
   ];
 
   @override

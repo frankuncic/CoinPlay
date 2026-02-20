@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -11,6 +12,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _usernameController = TextEditingController();
   bool _isLogin = true;
   bool _isLoading = false;
   String? _error;
@@ -27,10 +29,18 @@ class _AuthScreenState extends State<AuthScreen> {
           password: _passwordController.text.trim(),
         );
       } else {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(cred.user!.uid)
+            .set({
+              'username': _usernameController.text.trim(),
+              'email': _emailController.text.trim(),
+              'createdAt': FieldValue.serverTimestamp(),
+            });
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
@@ -53,7 +63,7 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
+              const Text(
                 'CoinPlay',
                 style: TextStyle(
                   fontSize: 32,
@@ -62,6 +72,15 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
               const SizedBox(height: 40),
+              if (!_isLogin)
+                TextField(
+                  controller: _usernameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
+                ),
               TextField(
                 controller: _emailController,
                 style: const TextStyle(color: Colors.white),
